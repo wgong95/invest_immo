@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "type": "invest-immo-flat-config",
+  "savedAt": "2026-07-01T14:55:03.205Z",
+  "flat": {
+    "id": "flat_1",
+    "name": "single-dad ",
+    "enabled": true,
+    "prix_m2_achat": 11428.57142857143,
+    "loyer_m2": 42,
+    "surface": 29.75,
+    "frais_notaire_pct": 8,
+    "charges_copro_mensuelle": 143.66666666666666,
+    "taxe_fonciere_mensuelle": 100,
+    "vacance_locative_pct": 5,
+    "gestion_locative_pct": 0
+  }
+}

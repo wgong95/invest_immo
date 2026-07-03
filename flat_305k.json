@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "type": "invest-immo-flat-config",
+  "savedAt": "2026-07-01T14:54:15.073Z",
+  "flat": {
+    "id": "flat_2",
+    "name": "305K",
+    "enabled": true,
+    "prix_m2_achat": 11676.87595712098,
+    "loyer_m2": 42,
+    "surface": 26.12,
+    "frais_notaire_pct": 8,
+    "charges_copro_mensuelle": 91.66666666666667,
+    "taxe_fonciere_mensuelle": 87.08333333333333,
+    "vacance_locative_pct": 5,
+    "gestion_locative_pct": 0
+  }
+}

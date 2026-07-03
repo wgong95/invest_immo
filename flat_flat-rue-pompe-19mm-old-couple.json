@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "type": "invest-immo-flat-config",
+  "savedAt": "2026-07-01T16:00:42.927Z",
+  "flat": {
+    "id": "flat_3",
+    "name": "flat-rue-pompe-19mm-old-couple",
+    "enabled": true,
+    "prix_m2_achat": 13157.894736842105,
+    "loyer_m2": 42,
+    "surface": 19,
+    "frais_notaire_pct": 8,
+    "charges_copro_mensuelle": 89.25,
+    "taxe_fonciere_mensuelle": 87.08333333333333,
+    "vacance_locative_pct": 5,
+    "gestion_locative_pct": 0
+  }
+}

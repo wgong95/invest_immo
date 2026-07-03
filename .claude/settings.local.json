@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir=false --import-alias=\"@/*\" --yes)",
+      "Bash(which node *)",
+      "Read(//Users/wgong/.nvm/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(find /usr /opt /home -name \"node\" -type f 2>/dev/null | head -5; find ~/Library -name \"node\" -type f 2>/dev/null | head -3)"
+    ]
+  }
+}

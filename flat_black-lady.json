@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "type": "invest-immo-flat-config",
+  "savedAt": "2026-07-01T21:24:49.965Z",
+  "flat": {
+    "id": "flat_4",
+    "name": "black-lady",
+    "enabled": true,
+    "prix_m2_achat": 13260.869565217392,
+    "loyer_m2": 42,
+    "surface": 23,
+    "frais_notaire_pct": 8,
+    "charges_copro_mensuelle": 143.66666666666666,
+    "taxe_fonciere_mensuelle": 81.16666666666667,
+    "vacance_locative_pct": 5,
+    "gestion_locative_pct": 0
+  }
+}
