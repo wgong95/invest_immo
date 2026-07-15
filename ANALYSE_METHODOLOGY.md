@@ -38,6 +38,7 @@ Each strategy contains:
 - revenu_mensuel_brut
 - prix_m2_achat
 - loyer_m2
+- loyer_meuble_m2
 - surface
 - duree_pret_ans
 - frais_notaire_pct
@@ -50,6 +51,9 @@ Each strategy contains:
 - revalorisation_loyer_pct
 - horizon_ans
 - rendement_scpi
+- taux_actualisation (required return used to discount VAN; user-set, no CAPM/beta involved)
+- stress_cashflow_factor
+- stress_terminal_factor
 
 ## 2.2 LMNP-specific inputs (current model)
 
@@ -77,46 +81,69 @@ The backend is still called once per flat. Each call is independent.
 
 ## 3.1 Acquisition and financing
 
-- prix_achat = prix_m2_achat * surface
-- frais_notaire = prix_achat * frais_notaire_pct / 100
-- cout_total = prix_achat + frais_notaire
-- emprunt = max(0, cout_total - apport)
+$$
+\begin{aligned}
+\text{prix\_achat} &= \text{prix\_m2\_achat} \times \text{surface} \\
+\text{frais\_notaire} &= \text{prix\_achat} \times \frac{\text{frais\_notaire\_pct}}{100} \\
+\text{cout\_total} &= \text{prix\_achat} + \text{frais\_notaire} \\
+\text{emprunt} &= \max(0,\ \text{cout\_total} - \text{apport})
+\end{aligned}
+$$
 
 ## 3.2 Loan monthly payment
 
 Let:
-- t = taux_interet / 100 / 12
-- n = duree_pret_ans * 12
 
-If emprunt <= 0, mensualite = 0.
+$$
+t = \frac{\text{taux\_interet}}{100 \times 12}, \qquad n = \text{duree\_pret\_ans} \times 12
+$$
 
-If t == 0:
-- mensualite = emprunt / n
-
-Else (annuity formula):
-- mensualite = emprunt * t / (1 - (1 + t)^(-n))
+$$
+\text{mensualite} =
+\begin{cases}
+0 & \text{if } \text{emprunt} \le 0 \\[4pt]
+\dfrac{\text{emprunt}}{n} & \text{if } \text{emprunt} > 0 \text{ and } t = 0 \\[4pt]
+\text{emprunt} \times \dfrac{t}{1-(1+t)^{-n}} & \text{if } \text{emprunt} > 0 \text{ and } t \neq 0 \quad \text{(annuity formula)}
+\end{cases}
+$$
 
 ## 3.3 Amortization table
 
 For each month:
-- interets_m = capital_restant * t
-- amort_m = mensualite - interets_m
-- capital_restant = max(0, capital_restant - amort_m)
+
+$$
+\begin{aligned}
+\text{interets}_m &= \text{capital\_restant} \times t \\
+\text{amort}_m &= \text{mensualite} - \text{interets}_m \\
+\text{capital\_restant} &\leftarrow \max(0,\ \text{capital\_restant} - \text{amort}_m)
+\end{aligned}
+$$
 
 Yearly helpers:
-- interets annuels = sum of monthly interest over the 12 months of year y
-- capital restant (year y) = remaining principal at the end of year y
+
+$$
+\text{interets\_annuels}(y) = \sum_{m \,\in\, \text{months of year } y} \text{interets}_m
+$$
+
+$$
+\text{capital\_restant}(y) = \text{remaining principal at the end of year } y
+$$
 
 ## 3.4 Shared tax rate
 
-- taux_fiscal = (tmi + 17.2) / 100
+$$
+\text{taux\_fiscal} = \frac{\text{tmi} + 17.2}{100}
+$$
 
 17.2 is modeled as social contributions.
 
 ## 3.5 Shared valuation revaluation
 
 For non-SCPI real estate strategies:
-- valeur_bien(y) = prix_achat * (1 + revalorisation_bien_pct / 100)^y
+
+$$
+\text{valeur\_bien}(y) = \text{prix\_achat} \times \left(1 + \frac{\text{revalorisation\_bien\_pct}}{100}\right)^{y}
+$$
 
 ## 4) Strategy Methodology
 
@@ -125,37 +152,62 @@ For non-SCPI real estate strategies:
 ### Revenue
 
 Base monthly rent:
-- loyer_nu = loyer_m2 * surface
+
+$$
+\text{loyer\_nu} = \text{loyer\_m2} \times \text{surface}
+$$
 
 Year y annual rent:
-- loyer(y) = loyer_nu * 12 * (1 + revalorisation_loyer_pct/100)^(y-1) * (1 - vacance_locative_pct/100)
+
+$$
+\text{loyer}(y) = \text{loyer\_nu} \times 12 \times \left(1+\frac{\text{revalorisation\_loyer\_pct}}{100}\right)^{y-1} \times \left(1 - \frac{\text{vacance\_locative\_pct}}{100}\right)
+$$
 
 ### Charges
 
-- charges_copro = charges_copro_mensuelle * 12
-- tf = taxe_fonciere_mensuelle * 12
-- gestion = loyer(y) * gestion_locative_pct / 100
+$$
+\begin{aligned}
+\text{charges\_copro} &= \text{charges\_copro\_mensuelle} \times 12 \\
+\text{tf} &= \text{taxe\_fonciere\_mensuelle} \times 12 \\
+\text{gestion}(y) &= \text{loyer}(y) \times \frac{\text{gestion\_locative\_pct}}{100}
+\end{aligned}
+$$
 
 ### Tax base and tax
 
-- revenu_foncier = loyer(y) - interets(y) - charges_copro - tf - gestion
+$$
+\text{revenu\_foncier}(y) = \text{loyer}(y) - \text{interets}(y) - \text{charges\_copro} - \text{tf} - \text{gestion}(y)
+$$
 
-If revenu_foncier > 0:
-- impot = revenu_foncier * taux_fiscal
-
-Else:
-- impot = -min(abs(revenu_foncier), 10700) * tmi / 100
+$$
+\text{impot}(y) =
+\begin{cases}
+\text{revenu\_foncier}(y) \times \text{taux\_fiscal} & \text{if } \text{revenu\_foncier}(y) > 0 \\[4pt]
+-\min\!\big(|\text{revenu\_foncier}(y)|,\ 10{,}700\big) \times \dfrac{\text{tmi}}{100} & \text{otherwise}
+\end{cases}
+$$
 
 Negative impot here models a tax benefit from deductible deficit (simplified).
 
 ### Cash flow
 
-- mensualite_an(y) = mensualite * 12 if y <= duree_pret_ans else 0
-- cash_flow(y) = loyer(y) - mensualite_an(y) - charges_copro - tf - gestion - impot
+$$
+\text{mensualite\_an}(y) =
+\begin{cases}
+\text{mensualite} \times 12 & \text{if } y \le \text{duree\_pret\_ans} \\
+0 & \text{otherwise}
+\end{cases}
+$$
+
+$$
+\text{cash\_flow}(y) = \text{loyer}(y) - \text{mensualite\_an}(y) - \text{charges\_copro} - \text{tf} - \text{gestion}(y) - \text{impot}(y)
+$$
 
 ### Patrimoine net
 
-- patrimoine_net(y) = valeur_bien(y) - capital_restant(y)
+$$
+\text{patrimoine\_net}(y) = \text{valeur\_bien}(y) - \text{capital\_restant}(y)
+$$
 
 ## 4.2 Strategy B - LMNP Meuble
 
@@ -167,74 +219,103 @@ This strategy was updated to include:
 
 ### Revenue
 
-- loyer_meuble_mensuel = loyer_nu * 1.15
-- loyer(y) = loyer_meuble_mensuel * 12 * (1 + revalorisation_loyer_pct/100)^(y-1) * (1 - vacance_locative_pct/100)
+$$
+\text{loyer\_meuble\_mensuel} = \text{loyer\_meuble\_m2} \times \text{surface}
+$$
+
+$$
+\text{loyer}(y) = \text{loyer\_meuble\_mensuel} \times 12 \times \left(1+\frac{\text{revalorisation\_loyer\_pct}}{100}\right)^{y-1} \times \left(1 - \frac{\text{vacance\_locative\_pct}}{100}\right)
+$$
+
+`loyer_meuble_m2` is a dedicated furnished-rent rate input, independent from `loyer_m2` (unfurnished). It no longer derives from `loyer_nu` via a fixed multiplier.
 
 ### Amortization hypotheses
 
-- mobilier = prix_achat * 0.12
-- amort_bien_an = prix_achat * 0.80 / 30
-- amort_mob(y) = mobilier / 7 for years 1..7, else 0
-- amort_frais_acq_annuel = input parameter
+$$
+\begin{aligned}
+\text{mobilier} &= \text{prix\_achat} \times 0.12 \\
+\text{amort\_bien\_an} &= \text{prix\_achat} \times \frac{0.80}{30} \\
+\text{amort\_mob}(y) &=
+\begin{cases}
+\text{mobilier} / 7 & 1 \le y \le 7 \\
+0 & y > 7
+\end{cases} \\
+\text{amort\_frais\_acq\_annuel} &= \text{input parameter}
+\end{aligned}
+$$
 
 ### Step-by-step fiscal pipeline
 
-1) Deductible charges excluding amortization
+**1) Deductible charges excluding amortization**
 
-- charges_courantes(y) =
-  interets(y)
-  + charges_copro(y)
-  + tf(y)
-  + gestion(y)
-  + travaux_annuel
-  + assurance_pno_annuel
-  + cfe_annuel
-  + honoraires_comptable_annuel
+$$
+\begin{aligned}
+\text{charges\_courantes}(y) = {}& \text{interets}(y) + \text{charges\_copro}(y) + \text{tf}(y) + \text{gestion}(y) \\
+&+ \text{travaux\_annuel} + \text{assurance\_pno\_annuel} + \text{cfe\_annuel} + \text{honoraires\_comptable\_annuel}
+\end{aligned}
+$$
 
-2) BIC before amortization
+**2) BIC before amortization**
 
-- bic_avant_amort(y) = loyer(y) - charges_courantes(y)
+$$
+\text{bic\_avant\_amort}(y) = \text{loyer}(y) - \text{charges\_courantes}(y)
+$$
 
-3) Capped amortization deduction
+**3) Capped amortization deduction**
 
-- amort_total(y) =
-  amort_bien_an
-  + amort_mob(y)
-  + amort_frais_acq_annuel
-  + amort_reporte_anterieur
+$$
+\text{amort\_total}(y) = \text{amort\_bien\_an} + \text{amort\_mob}(y) + \text{amort\_frais\_acq\_annuel} + \text{amort\_reporte\_anterieur}
+$$
 
-- amort_deductible(y) = min(amort_total(y), max(0, bic_avant_amort(y)))
+$$
+\text{amort\_deductible}(y) = \min\!\Big(\text{amort\_total}(y),\ \max\big(0,\ \text{bic\_avant\_amort}(y)\big)\Big)
+$$
 
-- amort_reporte_nouveau = amort_total(y) - amort_deductible(y)
+$$
+\text{amort\_reporte\_nouveau}(y) = \text{amort\_total}(y) - \text{amort\_deductible}(y)
+$$
 
-4) BIC after amortization
+**4) BIC after amortization**
 
-- bic_apres_amort(y) = bic_avant_amort(y) - amort_deductible(y)
+$$
+\text{bic\_apres\_amort}(y) = \text{bic\_avant\_amort}(y) - \text{amort\_deductible}(y)
+$$
 
-5) Deficit carryforward (10-year stock)
+**5) Deficit carryforward (10-year stock)**
 
 The model keeps yearly deficit buckets with 10-year remaining life.
 
-- If bic_apres_amort(y) > 0:
-  - apply deficits from existing buckets (oldest first)
-  - imputation_deficit(y) = applied amount
+$$
+\text{imputation\_deficit}(y) =
+\begin{cases}
+\text{sum applied from existing buckets (oldest first)} & \text{if } \text{bic\_apres\_amort}(y) > 0 \\
+0 & \text{otherwise}
+\end{cases}
+$$
 
-- If bic_apres_amort(y) < 0:
-  - create a new deficit bucket with:
-    - montant = abs(bic_apres_amort(y))
-    - annees_restantes = 10
+If $\text{bic\_apres\_amort}(y) < 0$, a new deficit bucket is created:
 
-- bic_net_imposable(y) = max(0, bic_apres_amort(y) - imputation_deficit(y))
+$$
+\text{montant} = \big|\text{bic\_apres\_amort}(y)\big|, \qquad \text{annees\_restantes} = 10
+$$
 
-6) Tax
+$$
+\text{bic\_net\_imposable}(y) = \max\!\Big(0,\ \text{bic\_apres\_amort}(y) - \text{imputation\_deficit}(y)\Big)
+$$
 
-- impot(y) = bic_net_imposable(y) * taux_fiscal
+**6) Tax**
+
+$$
+\text{impot}(y) = \text{bic\_net\_imposable}(y) \times \text{taux\_fiscal}
+$$
 
 ### Cash flow (economic)
 
 LMNP cash flow remains an economic cash flow:
 
-- cash_flow(y) = loyer(y) - mensualite_an(y) - charges_copro(y) - tf(y) - gestion(y) - impot(y)
+$$
+\text{cash\_flow}(y) = \text{loyer}(y) - \text{mensualite\_an}(y) - \text{charges\_copro}(y) - \text{tf}(y) - \text{gestion}(y) - \text{impot}(y)
+$$
 
 Important:
 - non-cash accounting items (amortissement) do not leave cash,
@@ -250,51 +331,85 @@ Important:
 
 ### Revenue hypotheses
 
-- revenu_nuitee = loyer_nu * 2.8
-- taux_occupation = 0.70
-- revenu_mensuel = revenu_nuitee * taux_occupation
-- revenu(y) = revenu_mensuel * 12 * (1 + revalorisation_loyer_pct/100)^(y-1)
+$$
+\begin{aligned}
+\text{revenu\_nuitee} &= \text{loyer\_nu} \times 2.8 \\
+\text{taux\_occupation} &= 0.70 \\
+\text{revenu\_mensuel} &= \text{revenu\_nuitee} \times \text{taux\_occupation} \\
+\text{revenu}(y) &= \text{revenu\_mensuel} \times 12 \times \left(1+\frac{\text{revalorisation\_loyer\_pct}}{100}\right)^{y-1}
+\end{aligned}
+$$
 
 ### Cost hypotheses
 
-- charges_copro = charges_copro_mensuelle * 12
-- tf = taxe_fonciere_mensuelle * 12
-- plateforme = revenu(y) * 15%
-- conciergerie = revenu(y) * 20%
-- menage = 150 * 12
+$$
+\begin{aligned}
+\text{charges\_copro} &= \text{charges\_copro\_mensuelle} \times 12 \\
+\text{tf} &= \text{taxe\_fonciere\_mensuelle} \times 12 \\
+\text{plateforme}(y) &= \text{revenu}(y) \times 0.15 \\
+\text{conciergerie}(y) &= \text{revenu}(y) \times 0.20 \\
+\text{menage} &= 150 \times 12
+\end{aligned}
+$$
 
 ### Fiscal base
 
-- mobilier fixed = 20000
-- amort_bien_an = prix_achat * 0.80 / 30
-- amort_mob = mobilier / 7 for years 1..7, else 0
+$$
+\begin{aligned}
+\text{mobilier} &= 20{,}000 \quad \text{(fixed)} \\
+\text{amort\_bien\_an} &= \text{prix\_achat} \times \frac{0.80}{30} \\
+\text{amort\_mob}(y) &=
+\begin{cases}
+\text{mobilier} / 7 & 1 \le y \le 7 \\
+0 & y > 7
+\end{cases}
+\end{aligned}
+$$
 
-- bic = revenu(y) - interets(y) - charges_copro - tf - plateforme - conciergerie - menage - amort_bien_an - amort_mob
-- impot = max(0, bic) * taux_fiscal
+$$
+\text{bic}(y) = \text{revenu}(y) - \text{interets}(y) - \text{charges\_copro} - \text{tf} - \text{plateforme}(y) - \text{conciergerie}(y) - \text{menage} - \text{amort\_bien\_an} - \text{amort\_mob}(y)
+$$
+
+$$
+\text{impot}(y) = \max\big(0,\ \text{bic}(y)\big) \times \text{taux\_fiscal}
+$$
 
 ### Cash flow
 
-- cash_flow(y) = revenu(y) - mensualite_an(y) - charges_copro - tf - plateforme - conciergerie - menage - impot
+$$
+\text{cash\_flow}(y) = \text{revenu}(y) - \text{mensualite\_an}(y) - \text{charges\_copro} - \text{tf} - \text{plateforme}(y) - \text{conciergerie}(y) - \text{menage} - \text{impot}(y)
+$$
 
 ### Patrimoine
 
-- patrimoine_net(y) = valeur_bien(y) - capital_restant(y)
+$$
+\text{patrimoine\_net}(y) = \text{valeur\_bien}(y) - \text{capital\_restant}(y)
+$$
 
 ## 4.4 Strategy D - SCPI
 
 ### Capital and return hypotheses
 
-- frais_entree = 9%
-- capital_net = apport * (1 - 0.09)
-- rendement = rendement_scpi / 100
-- revalorisation_parts = 1%/year
+$$
+\begin{aligned}
+\text{frais\_entree} &= 9\% \\
+\text{capital\_net} &= \text{apport} \times (1 - 0.09) \\
+\text{rendement} &= \frac{\text{rendement\_scpi}}{100} \\
+\text{revalorisation\_parts} &= 1\%\ \text{per year}
+\end{aligned}
+$$
 
 ### Yearly loop
 
-- revenu(y) = valeur_parts(y-1) * rendement
-- impot(y) = revenu(y) * taux_fiscal
-- cash_flow(y) = revenu(y) - impot(y)
-- valeur_parts(y) = valeur_parts(y-1) * (1 + 0.01)
+$$
+\begin{aligned}
+\text{revenu}(y) &= \text{valeur\_parts}(y-1) \times \text{rendement} \\
+\text{impot}(y) &= \text{revenu}(y) \times \text{taux\_fiscal} \\
+\text{cash\_flow}(y) &= \text{revenu}(y) - \text{impot}(y) \\
+\text{valeur\_parts}(y) &= \text{valeur\_parts}(y-1) \times 1.01
+\end{aligned}
+\qquad \text{with } \text{valeur\_parts}(0) = \text{capital\_net}
+$$
 
 In SCPI rows:
 - patrimoine_net = valeur_parts
@@ -306,16 +421,25 @@ In SCPI rows:
 No rental income is modeled.
 Instead, the model uses avoided rent:
 
-- loyer_economise(y) = loyer_nu * 12 * (1 + revalorisation_loyer_pct/100)^(y-1)
+$$
+\text{loyer\_economise}(y) = \text{loyer\_nu} \times 12 \times \left(1+\frac{\text{revalorisation\_loyer\_pct}}{100}\right)^{y-1}
+$$
 
 ### Costs and cash flow differential
 
-- charges = charges_copro + tf
-- cash_flow(y) = loyer_economise(y) - mensualite_an(y) - charges_copro - tf
+$$
+\text{charges} = \text{charges\_copro} + \text{tf}
+$$
+
+$$
+\text{cash\_flow}(y) = \text{loyer\_economise}(y) - \text{mensualite\_an}(y) - \text{charges\_copro} - \text{tf}
+$$
 
 ### Patrimoine
 
-- patrimoine_net(y) = valeur_bien(y) - capital_restant(y)
+$$
+\text{patrimoine\_net}(y) = \text{valeur\_bien}(y) - \text{capital\_restant}(y)
+$$
 
 ## 5) Output Indicators - Definitions
 
@@ -327,7 +451,10 @@ Instead, the model uses avoided rent:
 - emprunt
 - mensualite
 - loyer_mensuel_brut
-- rendement_brut_nu = (loyer_nu * 12 / prix_achat) * 100
+
+$$
+\text{rendement\_brut\_nu} = \frac{\text{loyer\_nu} \times 12}{\text{prix\_achat}} \times 100
+$$
 
 ## 5.2 Yearly table indicators
 
@@ -346,22 +473,65 @@ Instead, the model uses avoided rent:
 
 ## 5.3 Strategy-level synthetic indicators
 
-- cash_flow_moyen
-  - average monthly cash flow over horizon
-  - implementation: round(sum(cash_flow annual rows) / horizon / 12)
+**cash_flow_moyen** — average monthly cash flow over horizon:
 
-- patrimoine_net_final
-  - last yearly patrimoine_net
+$$
+\text{cash\_flow\_moyen} = \text{round}\!\left(\frac{\sum_{y} \text{cash\_flow}(y)}{\text{horizon\_ans} \times 12}\right)
+$$
 
-- rendement_brut
-  - Location Nue: (loyer_nu * 12 / prix_achat) * 100
-  - LMNP: (loyer_meuble * 12 / prix_achat) * 100
-  - Courte Duree: (revenu_mensuel * 12 / prix_achat) * 100
-  - SCPI: rendement_scpi input
-  - Residence Principale: 0
+**patrimoine_net_final** — last yearly patrimoine_net.
 
-- tri (IRR)
-  - computed from yearly cash flow series + terminal value component
+**rendement_brut**:
+
+$$
+\text{rendement\_brut} =
+\begin{cases}
+\dfrac{\text{loyer\_nu} \times 12}{\text{prix\_achat}} \times 100 & \text{Location Nue} \\[8pt]
+\dfrac{\text{loyer\_meuble} \times 12}{\text{prix\_achat}} \times 100 & \text{LMNP} \\[8pt]
+\dfrac{\text{revenu\_mensuel} \times 12}{\text{prix\_achat}} \times 100 & \text{Courte Duree} \\[8pt]
+\text{rendement\_scpi (input)} & \text{SCPI} \\[8pt]
+0 & \text{Residence Principale}
+\end{cases}
+$$
+
+**tri (IRR)** — computed from yearly cash flow series + terminal value component (see section 6).
+
+**van (NPV)** — net present value of the same cash-flow vector used for TRI (see section 6.2), discounted at the user-set required return:
+
+$$
+\text{van} = \sum_{i=0}^{n} \frac{\text{cf}_i}{(1 + r)^{i}}, \qquad r = \frac{\text{taux\_actualisation}}{100}
+$$
+
+`taux_actualisation` is a direct user input (default 4%) — it is not derived from CAPM or a beta assumption.
+
+**stress_van** — same NPV formula, applied to a haircut scenario:
+
+$$
+\begin{aligned}
+\text{cf}_i^{\text{stress}} &= \text{cf}_i \times \text{stress\_cashflow\_factor} && (i = 1..n) \\
+\text{terminal}^{\text{stress}} &= \text{terminal} \times \text{stress\_terminal\_factor}
+\end{aligned}
+$$
+
+`stress_pass = stress_van > 0`.
+
+**is_candidate** — `van > 0`.
+
+**is_recommended** — among candidates (or, if none, among all strategies), the strategy with the highest `van`.
+
+**coc_return_pct** — cash-on-cash return, year 1 cash flow over the initial equity outlay:
+
+$$
+\text{coc\_return\_pct} = \frac{\text{cash\_flow}(1)}{|\text{initial\_outlay}|} \times 100
+$$
+
+**dscr** — Debt Service Coverage Ratio, year 1 income over year 1 annual debt service:
+
+$$
+\text{dscr} = \frac{\text{loyer\_annuel}(1)\ \text{or}\ \text{loyer\_economise}(1)}{\text{mensualite\_an}(1)}
+$$
+
+Not applicable to SCPI (no financed asset) — returned as `null`. A value ≥ 1 means year-1 rent alone covers the mortgage payment.
 
 ## 6) TRI / IRR Construction
 
@@ -374,28 +544,28 @@ Instead, the model uses avoided rent:
 
 ## 6.2 Cash-flow vectors by strategy
 
-Location Nue:
-- initial outflow: -(apport + frais_notaire)
+**Location Nue**
+- initial outflow: $-(\text{apport} + \text{frais\_notaire})$
 - yearly inflows: annual cash_flow
-- final add-on: valeur_fin - capital_restant_fin
+- final add-on: $\text{valeur\_fin} - \text{capital\_restant\_fin}$
 
-LMNP:
-- initial outflow: -(apport + frais_notaire + mobilier)
+**LMNP**
+- initial outflow: $-(\text{apport} + \text{frais\_notaire} + \text{mobilier})$
 - yearly inflows: annual cash_flow
-- final add-on: valeur_fin - capital_restant_fin
+- final add-on: $\text{valeur\_fin} - \text{capital\_restant\_fin}$
 
-Courte Duree:
-- initial outflow: -(apport + frais_notaire + mobilier)
+**Courte Duree**
+- initial outflow: $-(\text{apport} + \text{frais\_notaire} + \text{mobilier})$
 - yearly inflows: annual cash_flow
-- final add-on: valeur_fin - capital_restant_fin
+- final add-on: $\text{valeur\_fin} - \text{capital\_restant\_fin}$
 
-SCPI:
-- initial outflow: -apport
+**SCPI**
+- initial outflow: $-\text{apport}$
 - yearly inflows: annual cash_flow
 - final add-on: final valeur_parts
 
-Residence Principale:
-- initial outflow: -(apport + frais_notaire)
+**Residence Principale**
+- initial outflow: $-(\text{apport} + \text{frais\_notaire})$
 - yearly inflows: annual cash_flow
 - final add-on: valeur_fin
 

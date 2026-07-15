@@ -68,11 +68,10 @@ export default function StrategyCards({ strategies, activeId, onSelect }: Props)
             <Metric label="Cash flow moy." value={fmt(s.cash_flow_moyen) + "/mois"} positive={s.cash_flow_moyen >= 0} />
             <Metric label="Patrimoine final" value={fmt(s.patrimoine_net_final)} positive />
             <Metric label="VAN" value={fmt(s.van)} positive={s.van >= 0} />
-            <Metric label="ke (CAPM)" value={s.ke.toFixed(2) + " %"} />
             <Metric
-              label="TRI - ke"
-              value={s.tri_minus_ke === null ? "—" : s.tri_minus_ke.toFixed(2) + " pts"}
-              positive={s.tri_minus_ke === null ? undefined : s.tri_minus_ke >= 0}
+              label="DSCR (an 1)"
+              value={s.dscr === null ? "—" : s.dscr.toFixed(2) + "x"}
+              positive={s.dscr === null ? undefined : s.dscr >= 1}
             />
             <Metric
               label="CoC (an 1)"

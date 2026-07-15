@@ -5,7 +5,7 @@ import { FlatConfig, Params } from "@/lib/types";
 
 interface Props {
   flats: FlatConfig[];
-  defaults: Pick<Params, "prix_m2_achat" | "loyer_m2" | "surface" | "frais_notaire_pct" | "charges_copro_mensuelle" | "taxe_fonciere_mensuelle" | "vacance_locative_pct" | "gestion_locative_pct">;
+  defaults: Pick<Params, "prix_m2_achat" | "loyer_m2" | "loyer_meuble_m2" | "surface" | "frais_notaire_pct" | "charges_copro_mensuelle" | "taxe_fonciere_mensuelle" | "vacance_locative_pct" | "gestion_locative_pct">;
   onChange: (flats: FlatConfig[]) => void;
 }
 
@@ -23,6 +23,7 @@ type FlatConfigFile = {
 const REQUIRED_NUMERIC_FIELDS: Array<keyof FlatConfig> = [
   "prix_m2_achat",
   "loyer_m2",
+  "loyer_meuble_m2",
   "surface",
   "frais_notaire_pct",
   "charges_copro_mensuelle",
@@ -87,6 +88,7 @@ export default function FlatComparePanel({ flats, defaults, onChange }: Props) {
           enabled,
           prix_m2_achat: defaults.prix_m2_achat,
           loyer_m2: defaults.loyer_m2,
+          loyer_meuble_m2: defaults.loyer_meuble_m2,
           surface: defaults.surface,
           frais_notaire_pct: defaults.frais_notaire_pct,
           charges_copro_mensuelle: defaults.charges_copro_mensuelle,
@@ -312,9 +314,14 @@ export default function FlatComparePanel({ flats, defaults, onChange }: Props) {
               }}
             />
             <NumberField
-              label="Loyer/m2"
+              label="Loyer non meublé/m2"
               value={flat.loyer_m2}
               onChange={(v) => onChange(updateFlat(flats, flat.id, { loyer_m2: v }))}
+            />
+            <NumberField
+              label="Loyer meublé/m2"
+              value={flat.loyer_meuble_m2}
+              onChange={(v) => onChange(updateFlat(flats, flat.id, { loyer_meuble_m2: v }))}
             />
             <NumberField
               label="Surface"

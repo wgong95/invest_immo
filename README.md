@@ -14,9 +14,8 @@ A real-estate investment analysis app for comparing multiple strategies and mult
 - Compute yearly cash flow, taxes, net wealth, and financing effects
 - Show decision metrics per strategy:
   - TRI (IRR)
-  - VAN (NPV)
-  - ke (Hamada + CAPM)
-  - TRI - ke
+  - VAN (NPV) using a user-set required return
+  - DSCR (year 1)
   - CoC Return (year 1)
   - Stress-test VAN
 - Export PDF / Excel
@@ -96,9 +95,8 @@ docker compose down
 ## Key Financial Metrics
 
 - **TRI**: annualized internal rate of return from the project cash-flow timeline.
-- **VAN**: net present value under a discount rate.
-- **ke (Hamada + CAPM)**: strategy-specific cost of equity.
-- **TRI - ke**: spread between project return and equity cost.
+- **VAN**: net present value, discounted at `taux_actualisation` (a user-set required return, no CAPM/beta involved).
+- **DSCR (year 1)**: `loyer / mensualite_an` — how comfortably rent covers the mortgage payment. Not applicable to SCPI (no loan).
 - **CoC Return**: first-year cash return on initial equity outlay.
 - **Stress VAN**: downside NPV under reduced cash flow and terminal value factors.
 

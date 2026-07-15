@@ -18,7 +18,8 @@ class Params(BaseModel):
     taux_interet: float = 3.3
     revenu_mensuel_brut: float = 7000
     prix_m2_achat: float = 11000
-    loyer_m2: float = 42
+    loyer_m2: float = 38.5
+    loyer_meuble_m2: float = 43.0
     surface: float = 30
     duree_pret_ans: int = 10
     frais_notaire_pct: float = 8
@@ -27,18 +28,11 @@ class Params(BaseModel):
     vacance_locative_pct: float = 5.0
     gestion_locative_pct: float = 0.0
     tmi: float = 30.0
-    revalorisation_bien_pct: float = 3.5
+    revalorisation_bien_pct: float = 3.0
     revalorisation_loyer_pct: float = 0.75
     horizon_ans: int = 20
     rendement_scpi: float = 4.5
-    taux_actualisation: Optional[float] = None
-    taux_sans_risque: float = 1.6
-    prime_risque_marche: float = 5.0
-    beta_u_location_nue: float = 0.70
-    beta_u_lmnp: float = 0.85
-    beta_u_airbnb: float = 1.05
-    beta_u_scpi: float = 0.60
-    beta_u_residence_principale: float = 0.55
+    taux_actualisation: float = 4.0
     stress_cashflow_factor: float = 0.85
     stress_terminal_factor: float = 0.90
     travaux_annuel: float = 0.0
@@ -96,47 +90,13 @@ def npv(cash_flows: List[float], taux_actualisation_annuel: float) -> float:
     return sum(cf / ((1 + r) ** i) for i, cf in enumerate(cash_flows))
 
 
-def _compute_ke_hamada_capm(
-    beta_u: float,
-    debt: float,
-    equity: float,
-    tax_rate: float,
-    risk_free_rate: float,
-    market_risk_premium: float,
-) -> Dict[str, float]:
-    e = max(equity, 1.0)
-    d_e = max(0.0, debt) / e
-    t = min(max(tax_rate, 0.0), 0.45)
-    beta_l = beta_u * (1 + (1 - t) * d_e)
-    ke = risk_free_rate + beta_l * market_risk_premium
-    return {
-        "beta_u": round(beta_u, 4),
-        "beta_l": round(beta_l, 4),
-        "ke": round(ke, 2),
-    }
-
-
 def _compute_strategy_decision_metrics(
-    tri: Optional[float],
     initial_outlay: float,
     yearly_cashflows: List[float],
     terminal_addition: float,
-    debt: float,
-    equity: float,
-    beta_u: float,
     params: Params,
-    hamada_tax_rate: float,
 ) -> Dict[str, Any]:
-    capm = _compute_ke_hamada_capm(
-        beta_u=beta_u,
-        debt=debt,
-        equity=equity,
-        tax_rate=hamada_tax_rate,
-        risk_free_rate=params.taux_sans_risque,
-        market_risk_premium=params.prime_risque_marche,
-    )
-    ke = capm["ke"]
-    discount_rate = params.taux_actualisation if params.taux_actualisation is not None else ke
+    discount_rate = params.taux_actualisation
 
     base_cf = [initial_outlay] + yearly_cashflows
     base_cf[-1] += terminal_addition
@@ -150,20 +110,25 @@ def _compute_strategy_decision_metrics(
     if initial_outlay < 0 and yearly_cashflows:
         coc_return = yearly_cashflows[0] / abs(initial_outlay) * 100
 
-    tri_minus_ke = None if tri is None else round(tri - ke, 2)
-
     return {
         "van": round(van),
         "discount_rate_used": round(discount_rate, 2),
-        "ke": ke,
-        "beta_u": capm["beta_u"],
-        "beta_l": capm["beta_l"],
-        "tri_minus_ke": tri_minus_ke,
         "coc_return_pct": round(coc_return, 2),
         "stress_van": round(stress_van),
         "stress_pass": stress_van > 0,
         "is_candidate": van > 0,
     }
+
+
+def _dscr_an1(yearly: List[Dict[str, Any]], income_key: str) -> Optional[float]:
+    if not yearly:
+        return None
+    row = yearly[0]
+    mensualite_an = row.get("mensualite_an") or 0
+    revenu = row.get(income_key) or 0
+    if mensualite_an <= 0:
+        return None
+    return round(revenu / mensualite_an, 2)
 
 
 def _interets_annuels(amort_table: List[Dict], an: int, duree_pret_ans: int) -> float:
@@ -304,7 +269,6 @@ def analyse(params: Params) -> Dict[str, Any]:
 
     loyer_nu = params.loyer_m2 * params.surface
     taux_fiscal = (params.tmi + 17.2) / 100
-    hamada_tax_rate = min(max(params.tmi / 100, 0.0), 0.45)
 
     # ── Stratégie 1 : Location Nue (Régime Réel) ──────────────────────────
     def location_nue():
@@ -352,15 +316,10 @@ def analyse(params: Params) -> Dict[str, Any]:
         cf_tri[-1] += terminal_add
         tri = irr(cf_tri)
         decision = _compute_strategy_decision_metrics(
-            tri=tri,
             initial_outlay=-(params.apport + frais_notaire),
             yearly_cashflows=[y["cash_flow"] for y in yearly],
             terminal_addition=terminal_add,
-            debt=emprunt,
-            equity=params.apport + frais_notaire,
-            beta_u=params.beta_u_location_nue,
             params=params,
-            hamada_tax_rate=hamada_tax_rate,
         )
         kpis = _compute_profitability_kpis(yearly, cout_total, prix_achat)
         rentabilite_period = _compute_period_net_profitability(yearly, cout_total, yearly[-1]["patrimoine_net"])
@@ -375,11 +334,8 @@ def analyse(params: Params) -> Dict[str, Any]:
             "patrimoine_net_final": yearly[-1]["patrimoine_net"],
             "tri": round(tri, 2) if tri else None,
             "van": decision["van"],
-            "ke": decision["ke"],
-            "beta_u": decision["beta_u"],
-            "beta_l": decision["beta_l"],
             "discount_rate_used": decision["discount_rate_used"],
-            "tri_minus_ke": decision["tri_minus_ke"],
+            "dscr": _dscr_an1(yearly, "loyer_annuel"),
             "coc_return_pct": decision["coc_return_pct"],
             "stress_van": decision["stress_van"],
             "stress_pass": decision["stress_pass"],
@@ -395,7 +351,7 @@ def analyse(params: Params) -> Dict[str, Any]:
     def lmnp_meuble():
         mobilier = prix_achat * 0.12
         amort_bien_an = prix_achat * 0.80 / 30
-        loyer_meuble = loyer_nu * 1.15  # +15 % vs nu
+        loyer_meuble = params.loyer_meuble_m2 * params.surface
 
         yearly = []
         amort_reporte = 0.0
@@ -499,15 +455,10 @@ def analyse(params: Params) -> Dict[str, Any]:
         cf_tri[-1] += terminal_add
         tri = irr(cf_tri)
         decision = _compute_strategy_decision_metrics(
-            tri=tri,
             initial_outlay=-(params.apport + frais_notaire + mobilier),
             yearly_cashflows=[y["cash_flow"] for y in yearly],
             terminal_addition=terminal_add,
-            debt=emprunt,
-            equity=params.apport + frais_notaire + mobilier,
-            beta_u=params.beta_u_lmnp,
             params=params,
-            hamada_tax_rate=hamada_tax_rate,
         )
         kpis = _compute_profitability_kpis(yearly, cout_total, prix_achat)
         rentabilite_period = _compute_period_net_profitability(yearly, cout_total + mobilier, yearly[-1]["patrimoine_net"])
@@ -522,11 +473,8 @@ def analyse(params: Params) -> Dict[str, Any]:
             "patrimoine_net_final": yearly[-1]["patrimoine_net"],
             "tri": round(tri, 2) if tri else None,
             "van": decision["van"],
-            "ke": decision["ke"],
-            "beta_u": decision["beta_u"],
-            "beta_l": decision["beta_l"],
             "discount_rate_used": decision["discount_rate_used"],
-            "tri_minus_ke": decision["tri_minus_ke"],
+            "dscr": _dscr_an1(yearly, "loyer_annuel"),
             "coc_return_pct": decision["coc_return_pct"],
             "stress_van": decision["stress_van"],
             "stress_pass": decision["stress_pass"],
@@ -591,15 +539,10 @@ def analyse(params: Params) -> Dict[str, Any]:
         cf_tri[-1] += terminal_add
         tri = irr(cf_tri)
         decision = _compute_strategy_decision_metrics(
-            tri=tri,
             initial_outlay=-(params.apport + frais_notaire + mobilier),
             yearly_cashflows=[y["cash_flow"] for y in yearly],
             terminal_addition=terminal_add,
-            debt=emprunt,
-            equity=params.apport + frais_notaire + mobilier,
-            beta_u=params.beta_u_airbnb,
             params=params,
-            hamada_tax_rate=hamada_tax_rate,
         )
         kpis = _compute_profitability_kpis(yearly, cout_total, prix_achat)
         rentabilite_period = _compute_period_net_profitability(yearly, cout_total + mobilier, yearly[-1]["patrimoine_net"])
@@ -614,11 +557,8 @@ def analyse(params: Params) -> Dict[str, Any]:
             "patrimoine_net_final": yearly[-1]["patrimoine_net"],
             "tri": round(tri, 2) if tri else None,
             "van": decision["van"],
-            "ke": decision["ke"],
-            "beta_u": decision["beta_u"],
-            "beta_l": decision["beta_l"],
             "discount_rate_used": decision["discount_rate_used"],
-            "tri_minus_ke": decision["tri_minus_ke"],
+            "dscr": _dscr_an1(yearly, "loyer_annuel"),
             "coc_return_pct": decision["coc_return_pct"],
             "stress_van": decision["stress_van"],
             "stress_pass": decision["stress_pass"],
@@ -661,15 +601,10 @@ def analyse(params: Params) -> Dict[str, Any]:
         cf_tri[-1] += terminal_add
         tri = irr(cf_tri)
         decision = _compute_strategy_decision_metrics(
-            tri=tri,
             initial_outlay=-params.apport,
             yearly_cashflows=[y["cash_flow"] for y in yearly],
             terminal_addition=terminal_add,
-            debt=0,
-            equity=params.apport,
-            beta_u=params.beta_u_scpi,
             params=params,
-            hamada_tax_rate=hamada_tax_rate,
         )
         kpis = _compute_profitability_kpis(yearly, params.apport, capital_net)
         rentabilite_period = _compute_period_net_profitability(yearly, params.apport, yearly[-1]["patrimoine_net"])
@@ -684,11 +619,8 @@ def analyse(params: Params) -> Dict[str, Any]:
             "patrimoine_net_final": yearly[-1]["patrimoine_net"],
             "tri": round(tri, 2) if tri else None,
             "van": decision["van"],
-            "ke": decision["ke"],
-            "beta_u": decision["beta_u"],
-            "beta_l": decision["beta_l"],
             "discount_rate_used": decision["discount_rate_used"],
-            "tri_minus_ke": decision["tri_minus_ke"],
+            "dscr": None,
             "coc_return_pct": decision["coc_return_pct"],
             "stress_van": decision["stress_van"],
             "stress_pass": decision["stress_pass"],
@@ -736,15 +668,10 @@ def analyse(params: Params) -> Dict[str, Any]:
         cf_tri[-1] += terminal_add
         tri = irr(cf_tri)
         decision = _compute_strategy_decision_metrics(
-            tri=tri,
             initial_outlay=-(params.apport + frais_notaire),
             yearly_cashflows=[y["cash_flow"] for y in yearly],
             terminal_addition=terminal_add,
-            debt=emprunt,
-            equity=params.apport + frais_notaire,
-            beta_u=params.beta_u_residence_principale,
             params=params,
-            hamada_tax_rate=hamada_tax_rate,
         )
         kpis = _compute_profitability_kpis(yearly, cout_total, prix_achat)
         rentabilite_period = _compute_period_net_profitability(yearly, cout_total, yearly[-1]["patrimoine_net"])
@@ -759,11 +686,8 @@ def analyse(params: Params) -> Dict[str, Any]:
             "patrimoine_net_final": yearly[-1]["patrimoine_net"],
             "tri": round(tri, 2) if tri else None,
             "van": decision["van"],
-            "ke": decision["ke"],
-            "beta_u": decision["beta_u"],
-            "beta_l": decision["beta_l"],
             "discount_rate_used": decision["discount_rate_used"],
-            "tri_minus_ke": decision["tri_minus_ke"],
+            "dscr": _dscr_an1(yearly, "loyer_economise"),
             "coc_return_pct": decision["coc_return_pct"],
             "stress_van": decision["stress_van"],
             "stress_pass": decision["stress_pass"],

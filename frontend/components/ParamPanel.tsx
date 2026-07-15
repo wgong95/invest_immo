@@ -96,8 +96,8 @@ export default function ParamPanel({ params, onChange }: Props) {
       <Section title="Crédit immobilier">
         <Field label="Taux d'intérêt" value={params.taux_interet} field="taux_interet" unit="%" min={0} max={10} step={0.05} onChange={set} />
         <Field
-          label="Taux d'actualisation (VAN)"
-          value={params.taux_actualisation ?? params.taux_interet}
+          label="Rendement exigé (VAN)"
+          value={params.taux_actualisation}
           field="taux_actualisation"
           unit="%"
           min={0}
@@ -117,6 +117,8 @@ export default function ParamPanel({ params, onChange }: Props) {
       </Section>
 
       <Section title="Hypothèses de marché">
+        <Field label="Loyer non meublé" value={params.loyer_m2} field="loyer_m2" unit="€/m2" min={0} step={0.5} onChange={set} />
+        <Field label="Loyer meublé (LMNP)" value={params.loyer_meuble_m2} field="loyer_meuble_m2" unit="€/m2" min={0} step={0.5} onChange={set} />
         <Field label="Revalorisation bien" value={params.revalorisation_bien_pct} field="revalorisation_bien_pct" unit="%/an" min={-5} max={10} step={0.5} onChange={set} />
         <Field label="Revalorisation loyers" value={params.revalorisation_loyer_pct} field="revalorisation_loyer_pct" unit="%/an" min={-5} max={10} step={0.5} onChange={set} />
         <Field label="Rendement SCPI" value={params.rendement_scpi} field="rendement_scpi" unit="%" min={1} max={10} step={0.1} onChange={set} />
