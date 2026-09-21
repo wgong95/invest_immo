@@ -21,8 +21,11 @@ export default function ResumeBar({
     { label: "Frais de notaire", value: fmt(resume.frais_notaire) },
     { label: "Coût total", value: fmt(resume.cout_total) },
     { label: "Emprunt", value: fmt(resume.emprunt) },
-    { label: "Mensualité", value: fmt(resume.mensualite) + "/mois" },
+    { label: "Mensualité hors assurance", value: fmt(resume.mensualite) + "/mois" },
+    { label: "Mensualité avec assurance", value: fmt(resume.mensualite + resume.mensualite_assurance) + "/mois" },
+    { label: "Montant total des intérêts", value: fmt(resume.interets_totaux) },
     { label: "Loyer brut", value: fmt(resume.loyer_mensuel_brut) + "/mois" },
+    { label: "TAEG", value: fmtPct(resume.taeg) },
   ];
 
   return (

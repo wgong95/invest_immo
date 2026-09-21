@@ -17,15 +17,17 @@ function Field({
   max,
   step,
   onChange,
+  onCommit,
 }: {
   label: string;
   value: number;
-  field: keyof Params;
+  field?: keyof Params;
   unit?: string;
   min?: number;
   max?: number;
   step?: number;
-  onChange: (f: keyof Params, v: number) => void;
+  onChange?: (f: keyof Params, v: number) => void;
+  onCommit?: (v: number) => void;
 }) {
   const [raw, setRaw] = useState(String(value));
 
@@ -45,7 +47,8 @@ function Field({
     let next = parsed;
     if (min !== undefined) next = Math.max(min, next);
     if (max !== undefined) next = Math.min(max, next);
-    onChange(field, next);
+    if (onCommit) onCommit(next);
+    else if (onChange && field) onChange(field, next);
   };
 
   return (
@@ -95,6 +98,7 @@ export default function ParamPanel({ params, onChange }: Props) {
 
       <Section title="Crédit immobilier">
         <Field label="Taux d'intérêt" value={params.taux_interet} field="taux_interet" unit="%" min={0} max={10} step={0.05} onChange={set} />
+        <Field label="Taux d'assurance" value={params.taux_assurance} field="taux_assurance" unit="%" min={0} max={2} step={0.01} onChange={set} />
         <Field
           label="Taux d'actualisation (VAN)"
           value={params.taux_actualisation ?? params.taux_interet}
@@ -107,6 +111,20 @@ export default function ParamPanel({ params, onChange }: Props) {
         />
         <Field label="Durée du prêt" value={params.duree_pret_ans} field="duree_pret_ans" unit="ans" min={5} max={30} onChange={set} />
         <Field label="Frais de notaire" value={params.frais_notaire_pct} field="frais_notaire_pct" unit="%" min={0} max={12} step={0.5} onChange={set} />
+        <Field
+          label="Frais de notaire (montant)"
+          value={Math.round((params.prix_m2_achat * params.surface * params.frais_notaire_pct) / 100)}
+          unit="€"
+          min={0}
+          step={50}
+          onCommit={(v) => {
+            const prixAchat = params.prix_m2_achat * params.surface;
+            const pct = prixAchat > 0 ? (v / prixAchat) * 100 : 0;
+            set("frais_notaire_pct", pct);
+          }}
+        />
+        <Field label="Frais de dossier" value={params.frais_dossier} field="frais_dossier" unit="€" min={0} step={50} onChange={set} />
+        <Field label="Frais de garantie" value={params.frais_garantie} field="frais_garantie" unit="€" min={0} step={50} onChange={set} />
       </Section>
 
       <Section title="Charges & fiscalité">

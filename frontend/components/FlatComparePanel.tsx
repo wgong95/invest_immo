@@ -5,7 +5,7 @@ import { FlatConfig, Params } from "@/lib/types";
 
 interface Props {
   flats: FlatConfig[];
-  defaults: Pick<Params, "prix_m2_achat" | "loyer_m2" | "surface" | "frais_notaire_pct" | "charges_copro_mensuelle" | "taxe_fonciere_mensuelle" | "vacance_locative_pct" | "gestion_locative_pct">;
+  defaults: Pick<Params, "prix_m2_achat" | "loyer_m2" | "loyer_m2_meuble" | "surface" | "frais_notaire_pct" | "charges_copro_mensuelle" | "taxe_fonciere_mensuelle" | "vacance_locative_pct" | "gestion_locative_pct">;
   onChange: (flats: FlatConfig[]) => void;
 }
 
@@ -87,6 +87,7 @@ export default function FlatComparePanel({ flats, defaults, onChange }: Props) {
           enabled,
           prix_m2_achat: defaults.prix_m2_achat,
           loyer_m2: defaults.loyer_m2,
+          loyer_m2_meuble: defaults.loyer_m2_meuble,
           surface: defaults.surface,
           frais_notaire_pct: defaults.frais_notaire_pct,
           charges_copro_mensuelle: defaults.charges_copro_mensuelle,
@@ -312,9 +313,14 @@ export default function FlatComparePanel({ flats, defaults, onChange }: Props) {
               }}
             />
             <NumberField
-              label="Loyer/m2"
+              label="Loyer/m2 (non meuble)"
               value={flat.loyer_m2}
               onChange={(v) => onChange(updateFlat(flats, flat.id, { loyer_m2: v }))}
+            />
+            <NumberField
+              label="Loyer/m2 (meuble)"
+              value={flat.loyer_m2_meuble ?? Math.round(flat.loyer_m2 * 1.15 * 100) / 100}
+              onChange={(v) => onChange(updateFlat(flats, flat.id, { loyer_m2_meuble: v }))}
             />
             <NumberField
               label="Surface"
@@ -329,6 +335,15 @@ export default function FlatComparePanel({ flats, defaults, onChange }: Props) {
               label="Notaire (%)"
               value={flat.frais_notaire_pct}
               onChange={(v) => onChange(updateFlat(flats, flat.id, { frais_notaire_pct: v }))}
+            />
+            <NumberField
+              label="Notaire (€)"
+              value={Math.round((flat.prix_m2_achat * flat.surface * flat.frais_notaire_pct) / 100)}
+              onChange={(v) => {
+                const prixAchat = flat.prix_m2_achat * flat.surface;
+                const pct = prixAchat > 0 ? (v / prixAchat) * 100 : 0;
+                onChange(updateFlat(flats, flat.id, { frais_notaire_pct: pct }));
+              }}
             />
             <NumberField
               label="Charges (€/an)"

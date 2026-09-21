@@ -75,6 +75,11 @@ export default function StrategyCards({ strategies, activeId, onSelect }: Props)
               positive={s.tri_minus_ke === null ? undefined : s.tri_minus_ke >= 0}
             />
             <Metric
+              label="DSCR (an 1)"
+              value={s.dscr === null ? "—" : s.dscr.toFixed(2) + "x"}
+              positive={s.dscr === null ? undefined : s.dscr >= 1}
+            />
+            <Metric
               label="CoC (an 1)"
               value={s.coc_return_pct.toFixed(2) + " %"}
               positive={s.coc_return_pct >= 0}

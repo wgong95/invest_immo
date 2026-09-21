@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
-import { AnalyseResult, FlatConfig } from "./types";
+import { AnalyseResult, FlatConfig, LoanOffer, LoanOfferResult, Params } from "./types";
 
 export interface FlatAnalysis {
   flat: FlatConfig;
@@ -29,6 +29,47 @@ const fmtPct = (n: number | null | undefined) => {
   if (n === null || n === undefined || Number.isNaN(n)) return "-";
   return `${n.toFixed(2)}%`;
 };
+
+const dateStr = () => new Date().toISOString().slice(0, 10);
+
+function downloadJson(payload: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+interface ComparisonExportPayload {
+  version: 1;
+  type: "invest-immo-comparison-export";
+  exportedAt: string;
+  parametres_globaux: Params;
+  biens: Array<{
+    config: FlatConfig;
+    resume: AnalyseResult["resume"];
+    strategies: AnalyseResult["strategies"];
+  }>;
+}
+
+export function exportComparisonJson(params: Params, analyses: FlatAnalysis[]) {
+  const payload: ComparisonExportPayload = {
+    version: 1,
+    type: "invest-immo-comparison-export",
+    exportedAt: new Date().toISOString(),
+    parametres_globaux: params,
+    biens: analyses.map(({ flat, result }) => ({
+      config: flat,
+      resume: result.resume,
+      strategies: result.strategies,
+    })),
+  };
+  downloadJson(payload, `invest_immo_config_${dateStr()}.json`);
+}
 
 function summaryRows(analyses: FlatAnalysis[]) {
   return analyses.flatMap(({ flat, result }) =>
@@ -204,5 +245,96 @@ export function exportComparisonPdf(analyses: FlatAnalysis[]) {
     });
   });
 
-  doc.save(`rapport_invest_immo_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`rapport_invest_immo_${dateStr()}.pdf`);
+}
+
+interface LoanComparisonExportPayload {
+  version: 1;
+  type: "invest-immo-loan-comparison-export";
+  exportedAt: string;
+  offres: LoanOffer[];
+  resultats: LoanOfferResult[];
+}
+
+export function exportLoanComparisonJson(offers: LoanOffer[], results: LoanOfferResult[] | null) {
+  const payload: LoanComparisonExportPayload = {
+    version: 1,
+    type: "invest-immo-loan-comparison-export",
+    exportedAt: new Date().toISOString(),
+    offres: offers,
+    resultats: results ?? [],
+  };
+  downloadJson(payload, `comparateur_prets_${dateStr()}.json`);
+}
+
+export function exportLoanComparisonPdf(offers: LoanOffer[], results: LoanOfferResult[]) {
+  if (results.length === 0) return;
+
+  const doc = new jsPDF({ orientation: "landscape" });
+  const marginX = 14;
+
+  doc.setFontSize(14);
+  doc.text("Invest Immo - Comparateur d'offres de pret", marginX, 14);
+  doc.setFontSize(10);
+  doc.text(`Genere le ${new Date().toLocaleDateString("fr-FR")}`, marginX, 20);
+
+  doc.setFontSize(9);
+  doc.text("Parametres des offres", marginX, 28);
+
+  autoTable(doc, {
+    startY: 30,
+    head: [["Offre", "Montant emprunte", "Taux interet", "Taux assurance", "Duree", "Frais dossier", "Frais garantie"]],
+    body: offers.map((o) => [
+      o.nom,
+      fmtEuro(o.montant_emprunte),
+      fmtPct(o.taux_interet),
+      fmtPct(o.taux_assurance),
+      `${o.duree_pret_ans} ans`,
+      fmtEuro(o.frais_dossier),
+      fmtEuro(o.frais_garantie),
+    ]),
+    styles: { fontSize: 8 },
+    headStyles: { fillColor: [30, 64, 175] },
+    margin: { left: marginX, right: marginX },
+  });
+
+  const resultsStartY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY
+    ? (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable!.finalY + 10
+    : 60;
+
+  doc.setFontSize(9);
+  doc.text("Resultats compares", marginX, resultsStartY - 2);
+
+  const bestId = results.reduce((best, r) => ((r.taeg ?? Infinity) < (best.taeg ?? Infinity) ? r : best)).id;
+
+  autoTable(doc, {
+    startY: resultsStartY,
+    head: [[
+      "Offre",
+      "Mensualite (credit)",
+      "Mensualite (assurance)",
+      "Mensualite totale",
+      "Interets totaux",
+      "Cout assurance",
+      "Frais annexes",
+      "Cout total credit",
+      "TAEG",
+    ]],
+    body: results.map((r) => [
+      `${r.nom}${r.id === bestId ? " (meilleur TAEG)" : ""}`,
+      fmtEuro(r.mensualite),
+      fmtEuro(r.mensualite_assurance),
+      fmtEuro(r.mensualite_totale),
+      fmtEuro(r.interets_totaux),
+      fmtEuro(r.cout_assurance_total),
+      fmtEuro(r.frais_annexes),
+      fmtEuro(r.cout_total_credit),
+      fmtPct(r.taeg),
+    ]),
+    styles: { fontSize: 8 },
+    headStyles: { fillColor: [15, 118, 110] },
+    margin: { left: marginX, right: marginX },
+  });
+
+  doc.save(`comparateur_prets_${dateStr()}.pdf`);
 }
